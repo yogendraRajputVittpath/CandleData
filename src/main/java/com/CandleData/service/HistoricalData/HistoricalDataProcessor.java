@@ -13,7 +13,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
+import java.util.Calendar;
+import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 
@@ -30,7 +31,10 @@ public class HistoricalDataProcessor {
     @Transactional
     public void processStockData(Stock stock, String interval, SyncTracker tracker) throws Exception, KiteException {
         //Initial Checks
-        if (stock == null) return;
+    	 try {
+    	        if (stock == null) {
+    	            return;
+    	        }
         SyncTracker currentTracker = (tracker != null) ? tracker : prepareNewTracker(stock, interval);
 
         if (appUtils.isAlreadySyncedToday(currentTracker)) {
@@ -41,29 +45,126 @@ public class HistoricalDataProcessor {
         // Date Setup
         Date fromDate = appUtils.determineStartDate(currentTracker, interval);
         Date toDate = appUtils.determineToDate();
-        if (fromDate.after(toDate)) return;
+        if (fromDate.after(toDate)) {
+            return;
+        }
 
-        //Fetch Data
-        List<com.zerodhatech.models.HistoricalData> kiteData = fetchKiteData(stock, interval, fromDate, toDate);
-        if (kiteData.isEmpty()) return;
+//        //Fetch Data
+//        List<com.zerodhatech.models.HistoricalData> kiteData = fetchKiteData(stock, interval, fromDate, toDate);
+//        if (kiteData.isEmpty()) return;
+//
+//        //Map & Save
+//        List<HistoricalData> entities = kiteData.stream()
+//                .map(d -> mapToEntity(stock, d))
+//                .toList();
+//
+//        historicalRepository.saveBatch(interval, entities);
+//
+//        // Update Status
+//        updateTracker(currentTracker, kiteData.get(kiteData.size() - 1).timeStamp);
+//        log.info("[SUCCESS] {} ({}) - Records: {}", stock.getTradingSymbol(), interval, entities.size());
+//    }
+   
+        
+     // Fetch Data in Chunks
+        Calendar chunkStart = Calendar.getInstance();
+        chunkStart.setTime(fromDate);
 
-        //Map & Save
-        List<HistoricalData> entities = kiteData.stream()
-                .map(d -> mapToEntity(stock, d))
-                .toList();
+        Calendar finalDate = Calendar.getInstance();
+        finalDate.setTime(toDate);
 
-        historicalRepository.saveBatch(interval, entities);
+        int chunkDays = appUtils.getChunkDays(interval);
 
-        // Update Status
-        updateTracker(currentTracker, kiteData.get(kiteData.size() - 1).timeStamp);
-        log.info("[SUCCESS] {} ({}) - Records: {}", stock.getTradingSymbol(), interval, entities.size());
-    }
+        int totalRecords = 0;
+
+        while (chunkStart.getTime().before(finalDate.getTime())) {
+
+            Calendar chunkEnd = Calendar.getInstance();
+            chunkEnd.setTime(chunkStart.getTime());
+            chunkEnd.add(Calendar.DAY_OF_MONTH, chunkDays);
+
+            if (chunkEnd.after(finalDate)) {
+                chunkEnd.setTime(finalDate.getTime());
+            }
+
+            log.info("Fetching {} | {} -> {}",
+                    interval,
+                    chunkStart.getTime(),
+                    chunkEnd.getTime());
+
+            List<com.zerodhatech.models.HistoricalData> kiteData =
+                    fetchKiteData(
+                            stock,
+                            interval,
+                            chunkStart.getTime(),
+                            chunkEnd.getTime()
+                    );
+
+            if (!kiteData.isEmpty()) {
+
+                List<HistoricalData> entities = kiteData.stream()
+                        .map(d -> mapToEntity(stock, d))
+                        .toList();
+
+                historicalRepository.saveBatch(interval, entities);
+
+                totalRecords += entities.size();
+
+                updateTracker(
+                        currentTracker,
+                        kiteData.get(kiteData.size() - 1).timeStamp
+                );
+            }
+
+            chunkStart.setTime(chunkEnd.getTime());
+            chunkStart.add(Calendar.SECOND, 1);
+        }
+
+        log.info("[SUCCESS] {} ({}) - Total Records: {}",
+                stock.getTradingSymbol(),
+                interval,
+                totalRecords);
+        }
+    	 catch (Exception e) {
+
+    	        log.error("====================================");
+    	        log.error("FAILED STOCK : {}", stock.getTradingSymbol());
+    	        log.error("TOKEN        : {}", stock.getInstrumentToken());
+    	        log.error("INTERVAL     : {}", interval);
+    	        log.error("ERROR        : {}", e.getMessage());
+    	        log.error("====================================");
+
+    	        SyncTracker failedTracker =
+    	                (tracker != null)
+    	                        ? tracker
+    	                        : prepareNewTracker(stock, interval);
+
+    	        failedTracker.setStatus("FAILED");
+    	        failedTracker.setLastRunAt(java.time.LocalDateTime.now());
+
+    	        trackerRepository.save(failedTracker);
+    	}
+   }
+    
 
     private List<com.zerodhatech.models.HistoricalData> fetchKiteData(Stock stock, String interval, Date from, Date to) throws Exception, KiteException {
-        return kiteService.getKiteConnect()
-                .getHistoricalData(from, to, String.valueOf(stock.getInstrumentToken()), interval, false, true)
-                .dataArrayList;
-    }
+    	try {
+    	    return kiteService.getKiteConnect()
+    	            .getHistoricalData(
+    	                    from,
+    	                    to,
+    	                    String.valueOf(stock.getInstrumentToken()),
+    	                    interval,
+    	                    false,
+    	                    true
+    	            ).dataArrayList;
+    	} catch (KiteException e) {
+    	    log.error("Kite Code    : {}", e.code);
+    	    log.error("Kite Message : {}", e.message);
+
+    	    }
+    	 return Collections.emptyList();
+    } 
 
     private HistoricalData mapToEntity(Stock stock, com.zerodhatech.models.HistoricalData d) {
         // 1. Kite format ko MySQL format mein convert karein

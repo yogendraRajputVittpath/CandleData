@@ -54,13 +54,8 @@ public class HistoricalDataScheduler {
 
         log.info("Historical data sync started at {}", new Date());
         
-        List<Stock> stocks = stockRepository.findAll()
-                .stream()
-                .filter(s ->
-                        "TCS".equalsIgnoreCase(s.getTradingSymbol()) ||
-                        "RELIANCE".equalsIgnoreCase(s.getTradingSymbol())
-                )
-                .toList();
+        List<Stock> stocks = stockRepository.findAll();
+        log.info("Total Stocks Found: {}", stocks.size());
 
         String[] intervals = {MINUTE,"5minute", "15minute", "60minute", "day", "week"};
         //String monthYear = new SimpleDateFormat("MMM_yyyy").format(new Date()).toUpperCase();

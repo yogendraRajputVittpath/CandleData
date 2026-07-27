@@ -45,7 +45,8 @@ public class AppUtils {
 	        DateTimeFormatter kiteFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssZ");
 	        
 	        SimpleDateFormat dbFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-	
+	        
+	       
 	        if (tracker.getLastFetchedTimestamp() != null && !tracker.getLastFetchedTimestamp().isEmpty()) {
 	            try {  
 	                OffsetDateTime odt = OffsetDateTime.parse(tracker.getLastFetchedTimestamp(), kiteFormatter);
@@ -75,5 +76,23 @@ public class AppUtils {
 	               tracker.getLastRunAt().toLocalDate().equals(LocalDate.now()) && 
 	               "SUCCESS".equals(tracker.getStatus());
 	    }
+	   
+	   public int getChunkDays(String interval) {
+
+		    return switch (interval.toLowerCase()) {
+
+		        case MINUTE -> 60;
+
+		        case FIVE_MINUTE -> 100;
+
+		        case FIFTEEN_MINUTE -> 100;
+
+		        case SIXTY_MINUTE -> 100;
+
+		        case DAY, WEEK -> 3650;
+
+		        default -> 30;
+		    };
+		}
 	   
 }

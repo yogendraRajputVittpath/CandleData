@@ -57,7 +57,9 @@ public class HistoricalDataScheduler {
         List<Stock> stocks = stockRepository.findAll();
         log.info("Total Stocks Found: {}", stocks.size());
 
-        String[] intervals = {MINUTE,"5minute", "15minute", "60minute", "day", "week"};
+        //String[] intervals = {MINUTE,"5minute", "15minute", "60minute", "day", "week"};
+        String[] intervals = {"day", "week"}; // for testing invesing help 
+        
         //String monthYear = new SimpleDateFormat("MMM_yyyy").format(new Date()).toUpperCase();
 
         for (String interval : intervals) {
